@@ -1,0 +1,828 @@
+{
+  "name": "business registration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "business-registration",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "63691930-2a83-409c-8ab8-caaf5ce08c59",
+      "name": "Business Registration Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        7200,
+        9248
+      ],
+      "webhookId": "business-registration"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate unique business ID in format BIZ-XXXXXX\nconst crypto = require('crypto');\n\n// Generate random 6-character alphanumeric ID\nconst randomBytes = crypto.randomBytes(3);\nconst business_id = 'BIZ-' + randomBytes.toString('hex').toUpperCase();\n\n// Get webhook data from previous node\nconst webhookData = $input.all()[0].json;\n\n// Combine business ID with webhook data\nreturn [{\n  json: {\n    ...webhookData,\n    business_id: business_id,\n    generatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "776cc33f-f4e8-40a4-821a-328e6fcae59a",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7424,
+        9248
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate unique business ID\nconst timestamp = Date.now().toString(36).toUpperCase();\nconst random = Math.random().toString(36).substring(2, 8).toUpperCase();\nconst businessId = `BIZ-${timestamp.substring(0, 4)}${random}`;\n\nconst businessData = $input.item.json;\n\nreturn {\n  business_id: businessId,\n  ...businessData\n};"
+      },
+      "id": "4375d89a-970e-437c-986f-a0b6a4591ce4",
+      "name": "Generate Business ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7648,
+        9248
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get input\nconst input = $input.item.json;\n\n// Extract business ID\nconst businessId = input.business_id;\n\n// Generate API key and token\nconst apiKey = `${businessId}.${Array.from({length: 64}, () => Math.random().toString(36)[2]).join('')}`;\nconst apiToken = Array.from({length: 128}, () => Math.random().toString(36)[2]).join('');\n\n// Return output including original body and additional info\nreturn {\n  business_id: businessId,\n  api_key: apiKey,\n  api_token: apiToken,\n  status: 'active',\n  created_at: new Date().toISOString(),\n  body: input.body,\n  webhookUrl: input.webhookUrl,\n  executionMode: input.executionMode,\n  generatedAt: input.generatedAt\n};\n"
+      },
+      "id": "04c855e3-4381-43c9-95c0-03a564a9e796",
+      "name": "Generate API Credentials",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7872,
+        9152
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "business_profiles",
+        "dataToSend": "autoMapInputData"
+      },
+      "id": "ccb1af93-37d0-4958-a46d-8b247276985b",
+      "name": "Store in Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        7872,
+        9344
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "NRegD1pY1hjqGeOn",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "api_credentials",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "business_id",
+              "fieldValue": "={{ $json.business_id }}"
+            },
+            {
+              "fieldId": "phone_number",
+              "fieldValue": "={{ $json.body.whatsapp_number }}"
+            },
+            {
+              "fieldId": "website_url",
+              "fieldValue": "={{ $json.body.website_url }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "consumer_key",
+              "fieldValue": "={{ $json.body.consumer_key }}"
+            },
+            {
+              "fieldId": "consumer_secret",
+              "fieldValue": "={{ $json.body.consumer_secret }}"
+            },
+            {
+              "fieldId": "api_key",
+              "fieldValue": "={{ $json.api_key }}"
+            },
+            {
+              "fieldId": "api_token",
+              "fieldValue": "={{ $json.api_token }}"
+            }
+          ]
+        }
+      },
+      "id": "2b533387-4ab5-43b5-ad3c-e1d032e8694b",
+      "name": "Store API Credentials",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8096,
+        9152
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "NRegD1pY1hjqGeOn",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.website_url }}/wp-json/wc/v3/products",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "consumer_key",
+              "value": "={{ $json.consumer_key }}"
+            },
+            {
+              "name": "consumer_secret",
+              "value": "={{ $json.consumer_secret }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c2fca24-d769-4a34-8f78-87e34f13f03f",
+      "name": "Fetch WooCommerce Products1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8544,
+        9320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform all products for Supabase\nconst businessId = $('Generate Business ID').first().json.business_id;\n\nreturn $input.all().map(item => {\n  const product = item.json;\n  return {\n    business_id: businessId,\n    wc_product_id: String(product.id || 0),\n    product_name: product.name || product.product_name || 'Unknown Product',\n    price: parseFloat(product.price || 0),\n    stock_quantity: product.stock_quantity !== undefined ? parseInt(product.stock_quantity) : null,\n    category: product.categories?.[0]?.name || null,\n    sku: product.sku || null,\n    product_id: product.id || null,\n    created_at: new Date().toISOString()\n  };\n});\n"
+      },
+      "id": "1145ca5c-95a2-4bae-a6ae-18d024799709",
+      "name": "Transform Products for Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8768,
+        9320
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "products",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $json.product_name }}"
+            },
+            {
+              "fieldId": "business_id",
+              "fieldValue": "={{ $json.business_id }}"
+            },
+            {
+              "fieldId": "wc_product_id",
+              "fieldValue": "={{ $json.wc_product_id }}"
+            },
+            {
+              "fieldId": "stock_quantity",
+              "fieldValue": "={{ $json.stock_quantity }}"
+            },
+            {
+              "fieldId": "category",
+              "fieldValue": "={{ $json.category }}"
+            },
+            {
+              "fieldId": "price",
+              "fieldValue": "={{ $json.price }}"
+            }
+          ]
+        }
+      },
+      "id": "1451af45-c09c-4b0c-ac33-6dd9033ab032",
+      "name": "Insert Products to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8992,
+        9320
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "NRegD1pY1hjqGeOn",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.website_url }}/wp-json/wc/v3/orders",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "consumer_key",
+              "value": "={{ $json.consumer_key }}"
+            },
+            {
+              "name": "consumer_secret",
+              "value": "={{ $json.consumer_secret }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "468d7b7e-b6f5-40de-81a2-141db0d12274",
+      "name": "Fetch WooCommerce Orders1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8320,
+        9512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform all WooCommerce orders for normalized tables (orders, order_items)\nconst businessId = $('Generate Business ID').first().json.business_id; \n\nreturn $input.all().map(inputItem => {\n    const order = inputItem.json;\n\n    const wcOrderId = String(order.id || 0); // String format for consistency\n    const customerId = String(order.customer_id || order.billing?.email || '0');\n    const orderDate = order.date_created || new Date().toISOString();\n    const orderStatus = order.status || 'pending';\n    const totalAmount = parseFloat(order.total || 0);\n\n    const lineItems = order.line_items || [];\n    const transformedItems = [];\n\n    // 1. Prepare Line Item Data\n    if (lineItems.length > 0) {\n        lineItems.forEach((item) => {\n            const itemQuantity = parseInt(item.quantity || 1);\n            const itemTotalAmount = parseFloat(item.total || 0);\n            \n            let unitPrice = itemTotalAmount / itemQuantity;\n            unitPrice = parseFloat(unitPrice.toFixed(2)); \n\n            const lineItem = {\n                // IMPORTANT: This links the item to the order in the database\n                temp_wc_order_id: wcOrderId, \n                product_id: String(item.product_id || item.variation_id || ''),\n                product_name: item.name || '',\n                quantity: itemQuantity,\n                unit_price: unitPrice,\n                item_total_amount: itemTotalAmount,\n                created_at: new Date().toISOString()\n            };\n            transformedItems.push(lineItem);\n        });\n    }\n\n    // 2. Output structure for n8n\n    return {\n        // Map this to 'orders' table\n        order_header: {\n            business_id: businessId,\n            wc_order_id: wcOrderId,\n            total_amount: totalAmount,\n            customer_id: customerId,\n            status: orderStatus,\n            created_at: orderDate,\n            raw_order_data: JSON.stringify(order),\n        },\n        // Map this to 'order_items' table\n        transformed_line_items: transformedItems\n    };\n});"
+      },
+      "id": "e26478ec-51e4-4dc7-b129-940c54382b1b",
+      "name": "Transform Orders to Sales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8544,
+        9512
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "sales",
+        "dataToSend": "autoMapInputData"
+      },
+      "id": "de1e3371-27f4-46b2-b73c-36fd38e05899",
+      "name": "Insert Sales to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8992,
+        9512
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "NRegD1pY1hjqGeOn",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract unique customers from all orders\nconst orders = $input.all();\nconst customersMap = new Map();\nconst businessId = $('Store API Credentials').first().json.business_id;\n\norders.forEach(item => {\n  const order = item.json;\n  const billing = order.billing || {};\n  const customerId = String(order.customer_id || 0);\n  \n  // Only add if not already exists (unique customers)\n  if (!customersMap.has(customerId)) {\n    const firstName = billing.first_name || '';\n    const lastName = billing.last_name || '';\n    const fullName = firstName && lastName \n      ? `${firstName} ${lastName}`.trim() \n      : billing.company || 'Guest Customer';\n    \n    customersMap.set(customerId, {\n      json: {\n        business_id: businessId,\n        wc_customer_id: customerId,\n        name: fullName,\n        email: billing.email || '',\n        phone_number: billing.phone || '',\n        created_at: new Date().toISOString()\n      }\n    });\n  }\n});\n\n// Convert Map to array\nreturn Array.from(customersMap.values());"
+      },
+      "id": "8d95da3a-2086-47fb-9188-6b0b4f726477",
+      "name": "Extract Unique Customers from Orders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8768,
+        9704
+      ],
+      "settings": {
+        "runOnceForAllItems": true
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "customers",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "wc_customer_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.wc_customer_id }}"
+            }
+          ]
+        },
+        "dataToSend": "autoMapInputData"
+      },
+      "id": "8c88e842-9fd7-472c-b26e-46bc8726366c",
+      "name": "Insert Customers to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8992,
+        9704
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "NRegD1pY1hjqGeOn",
+          "name": "Supabase account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ \n  {\n    \"success\": true,\n    \"business_id\": $('Generate Business ID').first().json.business_id,\n    \"api_key\": $('Generate API Credentials').first().json.api_key,\n    \"message\": \"Business registered successfully\",\n    \"data_imported\": {\n      \"products\": \"completed\",\n      \"orders\": \"completed\", \n      \"sales\": \"completed\",\n      \"customers\": \"completed\"\n    }\n  }\n}}",
+        "options": {}
+      },
+      "id": "a18de0c7-effc-42c7-a8d3-d2ddc40a17fe",
+      "name": "Return Final Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        9216,
+        9416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge order header with line items for sales insert\n// Process ALL orders, not just first item\nreturn $input.all().flatMap(inputItem => {\n  const data = inputItem.json;\n  const orderHeader = data.order_header;\n  const lineItems = data.transformed_line_items || [];\n  \n  // Create sales records - ONE per line item\n  return lineItems.map(item => {\n    return {\n      business_id: orderHeader.business_id,\n      wc_order_id: orderHeader.wc_order_id,\n      customer_id: orderHeader.customer_id,\n      product_id: item.product_id,\n      product_name: item.product_name,\n      order_date: orderHeader.created_at,\n      total_amount: orderHeader.total_amount,\n      amount: item.item_total_amount,\n      quantity: item.quantity,\n      stock_quantity: 0,\n      status: orderHeader.status,\n      created_at: new Date().toISOString()\n    };\n  });\n});"
+      },
+      "id": "df0b369c-0b26-4eb4-8b67-22a55c22da10",
+      "name": "Merge for Sales Insert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8768,
+        9512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.ultramsg.com/instance154955/messages/chat",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "=tyxivwnx1oj6sesr"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"{{ $json.phone_number }}\",\n  \"body\": \"Welcome! Your business is registered with ID:{{ $json.business_id }} .your api_key is {{ $json.api_key }} .Reply 'help' to get started.\"\n}",
+        "options": {}
+      },
+      "id": "b468ea96-59d9-476a-99f1-cdf65ff0f38b",
+      "name": "Send WhatsApp Welcome",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        8320,
+        8960
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "business_id",
+              "value": "={{ $('Store API Credentials').first().json.business_id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "api_key",
+              "value": "={{ $('Store API Credentials').first().json.api_key }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "onboarding_status",
+              "value": "completed",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "message",
+              "value": "Business registration completed successfully",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "lead_capture_webhook_url",
+              "value": "https://nazish-jahan32.app.n8n.cloud/webhook/lead-capture",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "integration_instructions",
+              "value": "Include your business_id in all lead capture requests to enable automated lead management",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e46615f-1f6d-42ed-86be-d5410e3e5313",
+      "name": "Prepare Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        8544,
+        8984
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "=\n{{ $('Generate Business ID').item.json.body.email }}",
+        "subject": "Welcome to Business Automation Platform - Your Account is Ready",
+        "message": "=<h2>Welcome to the Business Automation Platform!</h2>\n<p>Dear\n </p>\n<p>Your business {{ $('Generate Business ID').item.json.body.business_name }} has been successfully registered on our platform.</p>\n\n<h3>Your Account Details:</h3>\n<ul>\n  <li><strong>Business ID:</strong> {{ $json.business_id }}</li>\n  \n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        8320,
+        9152
+      ],
+      "id": "618e0819-34a9-4e91-bb93-a3a5fcd19669",
+      "name": "Send a message",
+      "webhookId": "675bebd0-d59e-4b76-8f38-fea9162bcfb2",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "W0eJKCPJrSROMHsX",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Business ID fetch karein\nconst businessId = $('Store API Credentials').first().json.business_id;\n\n// 2. Webhook data handle karein\nconst webhookJson = $('Business Registration Webhook').first().json;\nconst body = webhookJson.body || {};\n\n// 3. Sabse zyada use hone wali keys check karein\nconst contactNumber = body.phone_number || \n                      body.contact_number || \n                      body.phone ||\n                      body.data?.phone_number ||\n                      body.data?.contact_number ||\n                      \"Not Provided\";\n\nreturn [{\n  json: {\n    business_id: businessId,\n    whatsapp_number: contactNumber,\n    created_at: new Date().toISOString(),\n    debug_raw_body: body // Yeh line aapko batayegi ke asal key kya hai\n  }\n}];"
+      },
+      "id": "f15ce380-0968-4c03-8d1c-1a55d860635e",
+      "name": "Prepare WhatsApp Mapping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8320,
+        8768
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "whatsapp_mapping",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "business_id",
+              "fieldValue": "={{ $json.business_id }}"
+            },
+            {
+              "fieldId": "whatsapp_number",
+              "fieldValue": "={{ $json.debug_raw_body.whatsapp_number }}"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $json.created_at }}"
+            }
+          ]
+        }
+      },
+      "id": "f4c2edf8-9707-49aa-af8b-65bf8ba0e94f",
+      "name": "Save WhatsApp Mapping",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        8544,
+        8768
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "xiCjqA1xjeDF49xB",
+          "name": "Supabase account 2"
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "pinData": {
+    "Business Registration Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "aimlbusinessauto.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0",
+            "content-length": "259",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.5",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "116.90.101.245",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "PK",
+            "cf-ray": "9af83ed7b06eb5b9-LHE",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "origin": "null",
+            "priority": "u=0",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "116.90.101.245, 104.22.5.139",
+            "x-forwarded-host": "aimlbusinessauto.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-45-5cf4858c8f-8dwqw",
+            "x-is-trusted": "yes",
+            "x-real-ip": "116.90.101.245"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "business_name": "SK Natural",
+            "website_url": "https://sknatural.com",
+            "email": "aiml.team31@gmail.com",
+            "whatsapp_number": "+923116004886",
+            "consumer_key": "ck_30dbdaef5dbe6d89148e7fcdab34fc44c4e98701",
+            "consumer_secret": "cs_b61fe4f3b68be8595e66e1bf54a2e2cfd5e69bea"
+          },
+          "webhookUrl": "https://aimlbusinessauto.app.n8n.cloud/webhook/business-registration",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Business Registration Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Generate Business ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Business ID": {
+      "main": [
+        [
+          {
+            "node": "Generate API Credentials",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate API Credentials": {
+      "main": [
+        [
+          {
+            "node": "Store API Credentials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store API Credentials": {
+      "main": [
+        [
+          {
+            "node": "Fetch WooCommerce Products1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch WooCommerce Orders1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send WhatsApp Welcome",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare WhatsApp Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch WooCommerce Products1": {
+      "main": [
+        [
+          {
+            "node": "Transform Products for Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Products for Supabase": {
+      "main": [
+        [
+          {
+            "node": "Insert Products to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch WooCommerce Orders1": {
+      "main": [
+        [
+          {
+            "node": "Transform Orders to Sales",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Unique Customers from Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Unique Customers from Orders": {
+      "main": [
+        [
+          {
+            "node": "Insert Customers to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Products to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Return Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Sales to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Return Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Customers to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Return Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Orders to Sales": {
+      "main": [
+        [
+          {
+            "node": "Merge for Sales Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge for Sales Insert": {
+      "main": [
+        [
+          {
+            "node": "Insert Sales to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Welcome": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare WhatsApp Mapping": {
+      "main": [
+        [
+          {
+            "node": "Save WhatsApp Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "5aff7275-a246-4ae6-bea6-43533a0acb57",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "85e33fd4797c16a427fb84783049f7b183e4dbfc03d90160411d64ac2fd97c1a"
+  },
+  "id": "G7gOu8vBgVNf1iq8",
+  "tags": [
+    {
+      "updatedAt": "2025-12-16T10:54:36.516Z",
+      "createdAt": "2025-12-16T10:54:36.516Z",
+      "id": "0upaTcSRFbNhT4Tx",
+      "name": "whatsapp-voice-complete"
+    },
+    {
+      "updatedAt": "2025-12-16T10:48:45.142Z",
+      "createdAt": "2025-12-16T10:48:45.142Z",
+      "id": "8nJiRcKcVvlSCiFo",
+      "name": "production"
+    },
+    {
+      "updatedAt": "2025-12-16T10:56:27.520Z",
+      "createdAt": "2025-12-16T10:56:27.520Z",
+      "id": "jhyO5s7n1o4xmXjm",
+      "name": "sales-analytics"
+    },
+    {
+      "updatedAt": "2025-12-16T10:48:45.119Z",
+      "createdAt": "2025-12-16T10:48:45.119Z",
+      "id": "s26yhvdIEqoRLNPH",
+      "name": "whatsapp"
+    }
+  ]
+}

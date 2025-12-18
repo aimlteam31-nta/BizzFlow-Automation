@@ -1,0 +1,1070 @@
+{
+  "name": "reg_voice_sale_analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "whatsapp_mapping",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "whatsapp_number",
+              "keyValue": "={{ $json.phone_number_formatted }}"
+            }
+          ]
+        }
+      },
+      "id": "0da22573-6f0a-4984-bfa4-2d8c2196c1e4",
+      "name": "Lookup Business by Phone",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -7520,
+        -160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WtnCsHN5AcXMaI0K",
+          "name": "Supabase account AIML"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"error\": \"Phone number not registered\",\n  \"message\": \"Please register your business first\",\n  \"phone_number\": $('Extract Phone Number1').item.json.phone_number_formatted\n} }}",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "ca231eb0-ebce-4432-973b-5b43af216f72",
+      "name": "Return Not Registered Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -7072,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "audio-check",
+              "leftValue": "=={{ String($json.audio_url || $json.audio || $json.MediaUrl0 || '').length > 0 || $json.message_type === 'audio' || $json.type === 'audio' || String($json.MediaContentType0 || '').includes('audio') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "3d9aea99-e4e9-401b-a5f4-eacee3b3e2fb",
+      "name": "Check if Audio Message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -6848,
+        -256
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAeATjiive4BQOMhrKZAHWdqhKD6qRnousymhrXVeptwRYDvRzsZC1TWQAkdK6R5UN7sCDHtVAgQCfWzkBBbWpjI0RGDxyAAe0u4WgrIJw1XnMBgb6pChAW0oU2lskWhZAZCos3uv3wClpr293Wa04WMlJvZB2lTbZAQeZBP9HalMeKIMBGqAIygSGCYfxOAA4PPjii1LNqclW2WNR9ydeK1TYwxaIrzspeGrkF876Er5nverlCXZBDdDFvZAbpm1ZAhU8R9ugyyPjpNyxLr2ZCIzPqfoncVNa8ZAqMoRlOJTwZDZD"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "f9541e34-501e-45e6-921a-a6ff1ba7e5de",
+      "name": "Download Audio File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -6400,
+        -352
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "audioToText",
+        "requestOptions": {}
+      },
+      "id": "a0f0a628-e4a6-490f-a467-e9e04d9825cf",
+      "name": "Whisper Transcribe Audio",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        -6176,
+        -352
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "A7lCrEa7IEUx4Jya",
+          "name": "OpenAi account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge transcription with business data\nconst transcriptionData = $input.item.json;\nconst businessData = $('Merge Business & Phone Data1').item.json;\n\n// Get transcribed text\nconst transcribedText = transcriptionData.text || transcriptionData.transcription || '';\n\nconsole.log('Audio transcribed:', {\n  text: transcribedText,\n  length: transcribedText.length\n});\n\nreturn {\n  business_id: businessData.business_id,\n  business_name: businessData.business_name,\n  from: businessData.whatsapp_phone,\n  query_text: transcribedText.trim(),\n  source: 'audio_transcription',\n  timestamp: businessData.timestamp\n};"
+      },
+      "id": "2e2b6fa7-58ea-4876-a1db-6b561560e9e6",
+      "name": "Merge Transcription",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5952,
+        -352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI intent classification response\nconst aiResponse = $input.item.json;\n\n// Get business data from \"Use Text Message1\" node\nlet businessId = '';\nlet businessName = '';\nlet fromPhone = '';\nlet queryText = '';\n\ntry {\n  // Get data from \"Use Text Message1\" node (text path)\n  const textData = $('Use Text Message1').first().json;\n  businessId = textData.business_id || '';\n  businessName = textData.business_name || '';\n  fromPhone = textData.from || '';\n  queryText = textData.query_text || '';\n} catch (e) {\n  console.log('Text message node not found, trying audio path...');\n  \n  try {\n    // Fallback: Get from \"Merge Transcription\" node (audio path)\n    const audioData = $('Merge Transcription').first().json;\n    businessId = audioData.business_id || '';\n    businessName = audioData.business_name || '';\n    fromPhone = audioData.from || '';\n    queryText = audioData.query_text || '';\n  } catch (e2) {\n    console.error('Could not find business data from any node');\n  }\n}\n\n// Parse AI response for intent\nlet intentData = {};\ntry {\n  let responseText = aiResponse.message?.content || aiResponse.text || aiResponse.choices?.[0]?.message?.content || '';\n  responseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  intentData = JSON.parse(responseText);\n} catch (error) {\n  console.error('Failed to parse AI response:', error);\n  intentData = {\n    intent: 'GENERAL_HELP',\n    confidence: 0.5,\n    query_text: queryText\n  };\n}\n\nconsole.log('✅ Intent classified with business data:', {\n  intent: intentData.intent,\n  business_id: businessId,\n  from: fromPhone,\n  has_business_data: !!businessId\n});\n\n// Validate business_id exists\nif (!businessId) {\n  throw new Error('business_id not found from Use Text Message1 or Merge Transcription nodes');\n}\n\nreturn {\n  intent: intentData.intent || 'GENERAL_HELP',\n  confidence: intentData.confidence || 0.5,\n  query_text: intentData.query_text || queryText,\n  business_id: businessId,\n  business_name: businessName,\n  from: fromPhone,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "aa665d74-e89e-41ce-8abf-d1ec34ef334f",
+      "name": "Parse AI Intent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5504,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ⭐ Prepare payload for target workflow call\nconst routingData = $input.item.json;\n\n// Extract data - handle both nested payload and direct fields\nconst payload = routingData.payload || {};\nconst targetUrl = routingData.targetUrl || '';\nconst intent = routingData.intent || '';\n\n// Get business_id from multiple possible locations\nconst businessId = payload.business_id || routingData.business_id || '';\nconst fromPhone = payload.from || routingData.from || '';\nconst queryText = payload.query_text || routingData.query_text || '';\n\n// Validate required fields\nif (!targetUrl) {\n  throw new Error('targetUrl is required');\n}\n\nif (!businessId) {\n  throw new Error('business_id is required - not found in payload or routing data');\n}\n\nconsole.log('Calling Target Workflow:', {\n  url: targetUrl,\n  intent: intent,\n  business_id: businessId,\n  source: routingData.source || 'unknown'\n});\n\n// Return formatted output for Validate Input Data node\nreturn {\n  business_id: businessId,\n  query: queryText,\n  from: fromPhone,\n  timestamp: new Date().toISOString(),\n  intent: intent,\n  confidence: routingData.confidence || 0,\n  business_name: routingData.business_name || '',\n  source: routingData.source || 'unknown',\n  target_url: targetUrl\n};"
+      },
+      "id": "3b2f7c71-23e0-4741-9839-65f8f5fcdacb",
+      "name": "⭐ Prepare Target Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5056,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let phoneNumber = '';\nlet audioUrl = '';\nlet messageText = '';\nlet messageType = 'text';\n\nconst inputData = $input.item.json;\n\n// ✅ n8n WhatsApp Trigger STRUCTURE\nconst message = inputData.messages?.[0];\nconst contact = inputData.contacts?.[0];\n\n// PHONE NUMBER\nif (message?.from) {\n  phoneNumber = message.from;\n} else if (contact?.wa_id) {\n  phoneNumber = contact.wa_id;\n}\n\n// MESSAGE TYPE\nif (message?.type) {\n  messageType = message.type;\n}\n\n// TEXT MESSAGE\nif (message?.text?.body) {\n  messageText = message.text.body;\n}\n\n// AUDIO MESSAGE\nif (message?.audio) {\n  audioUrl = message.audio.id || '';\n  messageType = 'audio';\n}\n\n// CLEAN PHONE\nphoneNumber = phoneNumber\n  .replace('whatsapp:', '')\n  .replace('@c.us', '')\n  .replace('@s.whatsapp.net', '')\n  .replace('+', '')\n  .trim();\n\n// FORMAT PHONE\nconst formattedPhone = phoneNumber ? '+' + phoneNumber : '';\n\n// DEBUG\nconsole.log('Extracted Data:', {\n  phone: formattedPhone,\n  text: messageText,\n  audio: audioUrl,\n  type: messageType\n});\n\n// ✅ REQUIRED n8n RETURN\nreturn [\n  {\n    json: {\n      phone_number: phoneNumber,\n      phone_number_formatted: formattedPhone,\n      audio_url: audioUrl,\n      message_text: messageText,\n      message_type: messageType,\n      timestamp: new Date().toISOString(),\n      raw_payload: inputData\n    }\n  }\n];\n\n"
+      },
+      "id": "2c96760c-135f-4273-88b1-561c6fbc3918",
+      "name": "Extract Phone Number1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7744,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "business-check",
+              "leftValue": "={{ $input.all().length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2b3cbd68-4e5f-4801-90ff-07c2796ff770",
+      "name": "Check Business Found1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -7296,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge business data with phone data\nconst businessArray = $input.all();\nconst phoneData = $('Extract Phone Number1').item.json;\n\nif (!businessArray || businessArray.length === 0) {\n  throw new Error('Business not found');\n}\n\nconst business = businessArray[0].json;\n\nreturn {\n  business_id: business.business_id,\n  business_name: business.business_name || business.name,\n  whatsapp_phone: phoneData.phone_number_formatted,\n  audio_url: phoneData.audio_url,\n  message_text: phoneData.message_text,\n  message_type: phoneData.message_type,\n  timestamp: phoneData.timestamp\n};"
+      },
+      "id": "7e4789d0-e9da-4f12-ba94-fb8a5cd223b2",
+      "name": "Merge Business & Phone Data1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7072,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const businessData = $input.item.json;\nconst messageText = businessData.message_text || '';\n\nreturn {\n  business_id: businessData.business_id,\n  business_name: businessData.business_name,\n  from: businessData.whatsapp_phone,\n  query_text: messageText.trim(),\n  source: 'text_message',\n  timestamp: businessData.timestamp\n};"
+      },
+      "id": "1b8dc826-056c-43cf-80f5-6b9fad5ff13e",
+      "name": "Use Text Message1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5952,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "prompt": "=You are an intelligent business assistant that classifies user queries into specific business intents.\n\nAnalyze the following user query and determine the intent:\n\nQuery: \"{{ $json.query_text }}\"\n\nAvailable Intent Categories:\n1. SALES_INQUIRY - Questions about sales data, revenue, sales reports, sales performance, trends, analytics\n2. INVENTORY_CHECK - Questions about stock levels, product availability, inventory status, warehouse\n3. ORDER_PROCESSING - Creating new orders, order placement, checkout, purchase requests\n4. ORDER_STATUS - Checking order status, tracking, delivery updates, order history\n5. CUSTOMER_INFO - Customer data, contact information, customer profiles, CRM data\n6. GENERAL_HELP - Greetings, general questions, unclear intent, help requests\n\nExamples:\n- \"What were my sales today?\" → SALES_INQUIRY\n- \"Show me revenue report\" → SALES_INQUIRY\n- \"Do we have iPhone 15 in stock?\" → INVENTORY_CHECK\n- \"How many units of product X left?\" → INVENTORY_CHECK\n- \"I want to place an order\" → ORDER_PROCESSING\n- \"Create a new order for 5 laptops\" → ORDER_PROCESSING\n- \"Where is my order #12345?\" → ORDER_STATUS\n- \"Track order status\" → ORDER_STATUS\n- \"Show me customer details for John\" → CUSTOMER_INFO\n- \"Get contact info of client ABC\" → CUSTOMER_INFO\n- \"Hello\" → GENERAL_HELP\n- \"Help me\" → GENERAL_HELP\n\nRespond ONLY with this exact JSON format (no markdown, no backticks, no explanation):\n{\n  \"intent\": \"SALES_INQUIRY\",\n  \"confidence\": 0.95,\n  \"query_text\": \"cleaned and normalized query\"\n}\n\nRules:\n- confidence should be between 0.0 and 1.0\n- query_text should be cleaned (remove typos, normalize spelling)\n- Choose the MOST specific intent that matches\n- If unsure, use GENERAL_HELP with lower confidence",
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0.3
+        },
+        "requestOptions": {}
+      },
+      "id": "4a0c2e40-202f-4fe7-b72c-1701422e5e85",
+      "name": "AI Intent Classification1",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        -5728,
+        -256
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "A7lCrEa7IEUx4Jya",
+          "name": "OpenAi account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route to target workflow based on intent\nconst data = $input.item.json;\nconst intent = data.intent;\nconst BASE_URL = 'https://aimlbusinessauto.app.n8n.cloud/webhook-test';\n\nlet targetUrl = '';\n\n// Map intent to workflow endpoint\nswitch(intent) {\n  case 'SALES_INQUIRY':\n    targetUrl = `${BASE_URL}/sales-analytics`;\n    break;\n  case 'INVENTORY_CHECK':\n    targetUrl = `${BASE_URL}/inventory-check`;\n    break;\n  case 'ORDER_CREATE':\n    targetUrl = `${BASE_URL}/new-order`;\n    break;\n  case 'ORDER_STATUS':\n    targetUrl = `${BASE_URL}/order-status`;\n    break;\n  case 'CUSTOMER_INFO':\n    targetUrl = `${BASE_URL}/customer-info`;\n    break;\n  case 'GENERAL_HELP':\n  default:\n    targetUrl = `${BASE_URL}/sales-analytics`;\n    break;\n}\n\nconsole.log('Routing to:', {\n  intent: intent,\n  url: targetUrl\n});\n\nreturn {\n  targetUrl: targetUrl,\n  payload: {\n    business_id: data.business_id,\n    from: data.from,\n    query_text: data.query_text\n  },\n  intent: intent,\n  confidence: data.confidence,\n  business_name: data.business_name,\n  source: data.source\n};"
+      },
+      "id": "b04d49f8-afda-4feb-9b3f-59b07eea6a32",
+      "name": "Route to Target Workflow1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5280,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process response from target workflow\nconst targetResponse = $input.item.json;\n\n// Get prepared data from the '⭐ Prepare Target Payload' node\nlet preparedData = {};\ntry {\n  preparedData = $('⭐ Prepare Target Payload').item.json;\n} catch (error) {\n  console.error('Could not fetch prepared data:', error);\n  preparedData = {\n    intent: 'unknown',\n    confidence: 0,\n    business_name: '',\n    target_url: '',\n    source: 'unknown'\n  };\n}\n\n// Extract answer from response\nlet answer = '';\nlet responseData = {};\n\nif (targetResponse.answer) {\n  answer = targetResponse.answer;\n} else if (targetResponse.text) {\n  answer = targetResponse.text;\n} else if (targetResponse.message) {\n  answer = targetResponse.message;\n} else {\n  answer = 'Response received successfully.';\n}\n\n// Extract data if available\nif (targetResponse.data) {\n  responseData = targetResponse.data;\n}\n\nconsole.log('Response processed:', {\n  has_answer: !!answer,\n  answer_length: answer.length,\n  source: preparedData.source\n});\n\nreturn {\n  success: true,\n  answer: answer,\n  data: responseData,\n  metadata: {\n    intent: preparedData.intent,\n    confidence: preparedData.confidence,\n    business_name: preparedData.business_name,\n    workflow_url: preparedData.target_url,\n    source: preparedData.source,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "df1923a4-794e-472c-90d9-d3dbe723898e",
+      "name": "Process Workflow Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3264,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-analytics",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b625e567-20b8-4906-953a-9de49bb78376",
+      "name": "Sales Analytics Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -5056,
+        -64
+      ],
+      "webhookId": "sales-analytics"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate incoming data - support multiple formats\nconst input = $input.item.json;\n\n// Support nested payload or direct fields\nconst businessId = input.business_id || input.payload?.business_id || '';\nconst query = input.query || input.query_text || input.payload?.query_text || '';\nconst fromPhone = input.from || input.from_phone || input.payload?.from || '';\n\n// Log incoming request for debugging\nconsole.log('Sales Analytics Request:', {\n  business_id: businessId,\n  query: query,\n  from: fromPhone\n});\n\nif (!businessId) {\n  throw new Error('business_id is required');\n}\n\nif (!query) {\n  throw new Error('query is required');\n}\n\nreturn {\n  business_id: businessId,\n  query: query,\n  from_phone: fromPhone,\n  timestamp: input.timestamp || new Date().toISOString(),\n  raw_input: input\n};"
+      },
+      "id": "0b5a58ca-af29-4365-821a-52aa46022cf5",
+      "name": "Validate Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4832,
+        -160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse date range from query with smart detection\nconst input = $input.item.json;\nconst query = input.query.toLowerCase();\n\nconst now = new Date();\nlet startDate, endDate;\nlet dateRangeLabel = 'today';\n\n// Smart date range detection\nif (query.includes('today') || query.includes('aaj')) {\n  startDate = new Date(now.setHours(0, 0, 0, 0));\n  endDate = new Date();\n  dateRangeLabel = 'today';\n} else if (query.includes('yesterday') || query.includes('kal')) {\n  const yesterday = new Date(now);\n  yesterday.setDate(yesterday.getDate() - 1);\n  startDate = new Date(yesterday.setHours(0, 0, 0, 0));\n  endDate = new Date(yesterday.setHours(23, 59, 59, 999));\n  dateRangeLabel = 'yesterday';\n} else if (query.includes('this week') || query.includes('week') || query.includes('hafta')) {\n  const dayOfWeek = now.getDay();\n  const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);\n  startDate = new Date(now.setDate(diff));\n  startDate.setHours(0, 0, 0, 0);\n  endDate = new Date();\n  dateRangeLabel = 'this week';\n} else if (query.includes('this month') || query.includes('month') || query.includes('mahina')) {\n  startDate = new Date(now.getFullYear(), now.getMonth(), 1);\n  endDate = new Date();\n  dateRangeLabel = 'this month';\n} else if (query.includes('this year') || query.includes('year') || query.includes('saal')) {\n  startDate = new Date(now.getFullYear(), 0, 1);\n  endDate = new Date();\n  dateRangeLabel = 'this year';\n} else if (query.includes('last 7 days') || query.includes('past week')) {\n  startDate = new Date(now);\n  startDate.setDate(startDate.getDate() - 7);\n  startDate.setHours(0, 0, 0, 0);\n  endDate = new Date();\n  dateRangeLabel = 'last 7 days';\n} else if (query.includes('last 30 days') || query.includes('past month')) {\n  startDate = new Date(now);\n  startDate.setDate(startDate.getDate() - 30);\n  startDate.setHours(0, 0, 0, 0);\n  endDate = new Date();\n  dateRangeLabel = 'last 30 days';\n} else {\n  // Default to today if no date range specified\n  startDate = new Date(now.setHours(0, 0, 0, 0));\n  endDate = new Date();\n  dateRangeLabel = 'today';\n}\n\nconsole.log('Date Range Parsed:', {\n  label: dateRangeLabel,\n  start: startDate.toISOString(),\n  end: endDate.toISOString()\n});\n\nreturn {\n  business_id: input.business_id,\n  query: input.query,\n  from_phone: input.from_phone,\n  date_range_label: dateRangeLabel,\n  start_date: startDate.toISOString(),\n  end_date: endDate.toISOString(),\n  timestamp: input.timestamp\n};"
+      },
+      "id": "529db301-f5b1-438f-874b-737469543850",
+      "name": "Parse Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4608,
+        -160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all query results with proper error handling\nconst dateInfo = $('Parse Date Range').item.json;\n\n// Get summary data\nlet summaryData = { total_orders: 0, total_revenue: 0, average_order_value: 0, unique_customers: 0 };\ntry {\n  const summaryResult = $('Query Sales Summary1').all();\n  if (summaryResult && summaryResult.length > 0) {\n    summaryData = summaryResult[0].json || summaryData;\n  }\n} catch (error) {\n  console.error('Error fetching summary:', error);\n}\n\n// Get top products\nlet topProductsList = [];\ntry {\n  const topProducts = $('Query Top Products1').all();\n  topProductsList = topProducts.map(item => ({\n    product_name: item.json.product_name || 'Unknown',\n    product_id: item.json.product_id || '',\n    quantity_sold: parseInt(item.json.total_quantity_sold || 0),\n    sales_amount: parseFloat(item.json.total_sales_amount || 0),\n    order_count: parseInt(item.json.number_of_orders || 0),\n    avg_value: parseFloat(item.json.average_item_value || 0)\n  }));\n} catch (error) {\n  console.error('Error fetching top products:', error);\n}\n\n// Get daily trend\nlet dailyTrendData = [];\ntry {\n  const dailyTrend = $('Query Daily Sales Trend1').all();\n  dailyTrendData = dailyTrend.map(item => ({\n    date: item.json.sale_date,\n    revenue: parseFloat(item.json.daily_revenue || 0),\n    orders: parseInt(item.json.daily_orders || 0),\n    customers: parseInt(item.json.daily_customers || 0),\n    avg_order_value: parseFloat(item.json.avg_order_value || 0)\n  }));\n} catch (error) {\n  console.error('Error fetching daily trend:', error);\n}\n\n// Get status breakdown\nlet statusBreakdown = [];\ntry {\n  const byStatus = $('Query Sales by Status1').all();\n  statusBreakdown = byStatus.map(item => ({\n    status: item.json.status || 'unknown',\n    count: parseInt(item.json.order_count || 0),\n    amount: parseFloat(item.json.total_amount || 0),\n    avg_amount: parseFloat(item.json.avg_amount || 0)\n  }));\n} catch (error) {\n  console.error('Error fetching status breakdown:', error);\n}\n\nconsole.log('Data Merged Successfully:', {\n  orders: summaryData.total_orders,\n  revenue: summaryData.total_revenue,\n  top_products_count: topProductsList.length\n});\n\nreturn {\n  business_id: dateInfo.business_id,\n  query: dateInfo.query,\n  date_range: dateInfo.date_range_label,\n  start_date: dateInfo.start_date,\n  end_date: dateInfo.end_date,\n  summary: {\n    total_orders: parseInt(summaryData.total_orders || 0),\n    total_revenue: parseFloat(summaryData.total_revenue || 0),\n    average_order_value: parseFloat(summaryData.average_order_value || 0),\n    unique_customers: parseInt(summaryData.unique_customers || 0)\n  },\n  top_products: topProductsList.slice(0, 5),\n  daily_trend: dailyTrendData.slice(0, 7),\n  status_breakdown: statusBreakdown,\n  timestamp: dateInfo.timestamp\n};"
+      },
+      "id": "4f992db4-642e-4506-b79e-d5413c80e4b8",
+      "name": "Merge All Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4160,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "prompt": "=\n### System Prompt:\n```\nYou are a sales analytics assistant. Generate concise WhatsApp responses in Urdu/English.\n\nRules:\n- Keep under 200 words\n- Use bullet points\n- Include specific numbers\n- Be conversational\n- If no data, say \"Is period mein koi sales nahi mili\"\n```\n\n### User Prompt:\n```\nUser asked: {{ $('Parse Date Range').item.json.query }}\n\nPeriod: {{ $('Parse Date Range').item.json.date_range_label }}\n\nSummary:\n- Revenue: Rs. {{ $json.summary.total_sales || 0 }}\n- Orders: {{ $json.summary.order_count || 0 }}\n- Avg Order: Rs. {{ $json.summary.avg_order_value || 0 }}\n- Profit: Rs. {{ $json.summary.total_profit || 0 }}\n\nTop Products:\n{{ $json.top_products && $json.top_products.length > 0 ? $json.top_products.slice(0, 3).map((p, i) => `${i+1}. ${p.product_name} - Rs. ${p.revenue}`).join('\\n') : 'No products sold' }}\n\nAnswer the user's question clearly and concisely.\n```\n\n---\n\n## Even Simpler (Best for WhatsApp):\n\n### System Prompt:\n```\nGenerate a brief, friendly sales report in Urdu/English. Max 150 words. Use emojis sparingly.\n```\n\n### User Prompt:\n```\nQuery: {{ $('Parse Date Range').item.json.query }}\nDate: {{ $('Parse Date Range').item.json.date_range_label }}\n\n📊 Summary:\nTotal: Rs. {{ $json.summary.total_sales || 0 }}\nOrders: {{ $json.summary.order_count || 0 }}\nProfit: Rs. {{ $json.summary.total_profit || 0 }}\n\n🏆 Top Products:\n{{ $json.top_products && $json.top_products.length > 0 ? $json.top_products.slice(0, 3).map(p => `• ${p.product_name}: Rs. ${p.revenue}`).join('\\n') : '• No sales data' }}\n\nCreate a natural response answering their question.",
+        "options": {
+          "maxTokens": 600,
+          "temperature": 0.7
+        },
+        "requestOptions": {}
+      },
+      "id": "412b2dd3-38bc-408a-91e5-ad9584c2b82d",
+      "name": "AI Generate Response",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        -3936,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and format final output\nconst aiResponse = $input.item.json;\nconst salesData = $('Merge All Results').item.json;\n\n// Extract AI text from various response formats\nlet aiText = '';\ntry {\n  if (typeof aiResponse === 'string') {\n    aiText = aiResponse;\n  } else if (aiResponse.message?.content) {\n    aiText = aiResponse.message.content;\n  } else if (aiResponse.text) {\n    aiText = aiResponse.text;\n  } else if (aiResponse.choices?.[0]?.message?.content) {\n    aiText = aiResponse.choices[0].message.content;\n  } else {\n    aiText = JSON.stringify(aiResponse);\n  }\n} catch (error) {\n  console.error('Error parsing AI response:', error);\n  aiText = 'Unable to generate response. Please try again.';\n}\n\n// Clean up response\naiText = aiText.trim();\n\n// Fallback response if AI response is empty\nif (!aiText || aiText.length < 10) {\n  const summary = salesData.summary;\n  aiText = `📊 Sales Report for ${salesData.date_range}:\\n\\n` +\n    `You had ${summary.total_orders} orders generating Rs. ${summary.total_revenue.toFixed(2)} in revenue. ` +\n    `Average order value is Rs. ${summary.average_order_value.toFixed(2)}. ` +\n    (salesData.top_products.length > 0 ? \n      `Top seller: ${salesData.top_products[0].product_name} (Rs. ${salesData.top_products[0].sales_amount.toFixed(2)})` : \n      'Keep up the great work! 🎉'\n    );\n}\n\nconsole.log('Final Response Generated:', {\n  length: aiText.length,\n  has_data: salesData.summary.total_orders > 0\n});\n\nreturn {\n  success: true,\n  answer: aiText,\n  data: {\n    summary: salesData.summary,\n    top_products: salesData.top_products,\n    daily_trend: salesData.daily_trend.slice(0, 3),\n    status_breakdown: salesData.status_breakdown,\n    date_range: salesData.date_range\n  },\n  metadata: {\n    business_id: salesData.business_id,\n    query: salesData.query,\n    timestamp: new Date().toISOString(),\n    execution_time: Date.now() - new Date(salesData.timestamp).getTime()\n  }\n};"
+      },
+      "id": "d3a7f658-67d7-4b6a-a992-4a0b90ab67b1",
+      "name": "Format Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3712,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "286582e3-100a-4d87-b43b-2195d3948cc3",
+      "name": "Return Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -3488,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://rpwrofkrvepiurllmyxn.supabase.co/rest/v1/rpc/top_query_products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwd3JvZmtydmVwaXVybGxteXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjcxMTQsImV4cCI6MjA4MDkwMzExNH0.f-tPcfDNh8CXn0ra4Rq542xe5KHC18fp1S7M_YbulBw"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_business_id\": \"{{ $json.business_id }}\",\n  \"p_start_date\": \"{{ $json.start_date }}\", \n  \"p_end_date\": \"{{ $json.end_date }}\",\n  \"p_limit\": 5\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "c91b5682-5bae-46a3-8d71-9c47d1b523ce",
+      "name": "Query Top Products1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -4384,
+        -304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WtyepgqPmcm8fHid",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rpwrofkrvepiurllmyxn.supabase.co/rest/v1/rpc/query_daily_sales_trend",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwd3JvZmtydmVwaXVybGxteXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjcxMTQsImV4cCI6MjA4MDkwMzExNH0.f-tPcfDNh8CXn0ra4Rq542xe5KHC18fp1S7M_YbulBw"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_business_id\": \"{{ $('Parse Date Range').item.json.business_id }}\",\n  \"p_start_date\": \"{{ $('Parse Date Range').item.json.start_date }}\",\n  \"p_end_date\": \"{{ $('Parse Date Range').item.json.end_date }}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "f47b8865-5eb7-4d54-b93a-8c6ac834da4d",
+      "name": "Query Daily Sales Trend1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -4384,
+        -16
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WtyepgqPmcm8fHid",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rpwrofkrvepiurllmyxn.supabase.co/rest/v1/rpc/query_sales_by_status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwd3JvZmtydmVwaXVybGxteXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjcxMTQsImV4cCI6MjA4MDkwMzExNH0.f-tPcfDNh8CXn0ra4Rq542xe5KHC18fp1S7M_YbulBw"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_business_id\": \"{{ $('Parse Date Range').item.json.business_id }}\",\n  \"p_start_date\": \"{{ $('Parse Date Range').item.json.start_date }}\",\n  \"p_end_date\": \"{{ $('Parse Date Range').item.json.end_date }}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "39e4e693-c721-4646-935f-1acedca15653",
+      "name": "Query Sales by Status1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -4384,
+        176
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WtyepgqPmcm8fHid",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rpwrofkrvepiurllmyxn.supabase.co/rest/v1/rpc/query_sales_summary",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwd3JvZmtydmVwaXVybGxteXhuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjcxMTQsImV4cCI6MjA4MDkwMzExNH0.f-tPcfDNh8CXn0ra4Rq542xe5KHC18fp1S7M_YbulBw"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "p_business_id",
+              "value": "={{ $json.business_id }}"
+            },
+            {
+              "name": "p_query",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "p_date_range_label",
+              "value": "={{ $json.date_range_label }}"
+            },
+            {
+              "name": "p_start_date",
+              "value": "={{ $json.start_date }}"
+            },
+            {
+              "name": "p_end_date",
+              "value": "={{ $json.end_date }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -4384,
+        -496
+      ],
+      "id": "104384fd-b56e-44c6-bb9c-9cc3aa35b29f",
+      "name": "query_sales_summary",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WtyepgqPmcm8fHid",
+          "name": "Header Auth account 2"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "823956144143928",
+        "recipientPhoneNumber": "+92 323 5386518",
+        "textBody": "what is my  today's sale",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        -3040,
+        -160
+      ],
+      "id": "d45a578d-b368-405d-a703-c32c902b6581",
+      "name": "Send message",
+      "webhookId": "108f7d8c-3f77-4e89-afce-89f680975a8c",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "vzi6sFYh20IJSN0E",
+          "name": "WhatsApp account AIML"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -7968,
+        -160
+      ],
+      "id": "6a667b89-dd4b-497b-aba4-e6fabcc7d8fc",
+      "name": "WhatsApp Trigger",
+      "webhookId": "751d2904-c1c2-4843-bceb-e77e4cf08b11",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "y1UNlT9A2CB2j8AH",
+          "name": "WhatsApp OAuth account AIML"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v19.0/{{ $('Merge Business & Phone Data1').item.json.audio_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAeATjiive4BQOMhrKZAHWdqhKD6qRnousymhrXVeptwRYDvRzsZC1TWQAkdK6R5UN7sCDHtVAgQCfWzkBBbWpjI0RGDxyAAe0u4WgrIJw1XnMBgb6pChAW0oU2lskWhZAZCos3uv3wClpr293Wa04WMlJvZB2lTbZAQeZBP9HalMeKIMBGqAIygSGCYfxOAA4PPjii1LNqclW2WNR9ydeK1TYwxaIrzspeGrkF876Er5nverlCXZBDdDFvZAbpm1ZAhU8R9ugyyPjpNyxLr2ZCIzPqfoncVNa8ZAqMoRlOJTwZDZD"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -6624,
+        -352
+      ],
+      "id": "746ce56d-2b73-46ac-9d73-88a4d50e6586",
+      "name": "HTTP Request",
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Lookup Business by Phone": {
+      "main": [
+        [
+          {
+            "node": "Check Business Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Audio Message": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Use Text Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Audio File": {
+      "main": [
+        [
+          {
+            "node": "Whisper Transcribe Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper Transcribe Audio": {
+      "main": [
+        [
+          {
+            "node": "Merge Transcription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Transcription": {
+      "main": [
+        [
+          {
+            "node": "AI Intent Classification1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Intent": {
+      "main": [
+        [
+          {
+            "node": "Route to Target Workflow1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⭐ Prepare Target Payload": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Phone Number1": {
+      "main": [
+        [
+          {
+            "node": "Lookup Business by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Business Found1": {
+      "main": [
+        [
+          {
+            "node": "Merge Business & Phone Data1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Not Registered Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Business & Phone Data1": {
+      "main": [
+        [
+          {
+            "node": "Check if Audio Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Text Message1": {
+      "main": [
+        [
+          {
+            "node": "AI Intent Classification1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Intent Classification1": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route to Target Workflow1": {
+      "main": [
+        [
+          {
+            "node": "⭐ Prepare Target Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Workflow Response1": {
+      "main": [
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sales Analytics Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input Data": {
+      "main": [
+        [
+          {
+            "node": "Parse Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Date Range": {
+      "main": [
+        [
+          {
+            "node": "Query Top Products1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Daily Sales Trend1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Sales by Status1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "query_sales_summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Results": {
+      "main": [
+        [
+          {
+            "node": "AI Generate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate Response": {
+      "main": [
+        [
+          {
+            "node": "Format Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Response": {
+      "main": [
+        [
+          {
+            "node": "Return Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Success Response": {
+      "main": [
+        [
+          {
+            "node": "Process Workflow Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Top Products1": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Daily Sales Trend1": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Sales by Status1": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query_sales_summary": {
+      "main": [
+        [
+          {
+            "node": "Merge All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Phone Number1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Download Audio File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5b9ea1a6-4364-4a5e-b59e-fbd097b3068f",
+  "meta": {
+    "instanceId": "f3ea4b3b1af91f7cdcb29d6c1b5ed067ec80771b0665b888848e0d76a943f98c"
+  },
+  "id": "WQrNr83Ad5Xeqj2B",
+  "tags": [
+    {
+      "updatedAt": "2025-12-18T02:53:18.859Z",
+      "createdAt": "2025-12-18T02:53:18.859Z",
+      "id": "Jz8kfAoYdgWO5HS2",
+      "name": "whatsapp-voice-complete"
+    },
+    {
+      "updatedAt": "2025-12-18T02:53:18.915Z",
+      "createdAt": "2025-12-18T02:53:18.915Z",
+      "id": "dyK5t2lhTHZIALpu",
+      "name": "production"
+    },
+    {
+      "updatedAt": "2025-12-18T02:53:18.943Z",
+      "createdAt": "2025-12-18T02:53:18.943Z",
+      "id": "edt7pGSt7WSLKshL",
+      "name": "whatsapp"
+    },
+    {
+      "updatedAt": "2025-12-18T02:53:18.927Z",
+      "createdAt": "2025-12-18T02:53:18.927Z",
+      "id": "oXqzbi43MPoBqEr7",
+      "name": "sales-analytics"
+    }
+  ]
+}
